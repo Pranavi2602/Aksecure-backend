@@ -65,19 +65,31 @@ export const getServiceRequests = async (req, res) => {
   try {
     const userId = req.user._id;
     const role = req.user.role;
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
 
-    let serviceRequests;
-    if (role === 'admin') {
-      serviceRequests = await ServiceRequest.find()
-        .populate('userId', 'name companyName email phone address location')
-        .sort({ createdAt: -1 });
-    } else {
-      serviceRequests = await ServiceRequest.find({ userId })
-        .populate('userId', 'name companyName email phone')
-        .sort({ createdAt: -1 });
+    let query = {};
+    if (role !== 'admin') {
+      query.userId = userId;
     }
 
-    res.json(serviceRequests);
+    const [requests, total] = await Promise.all([
+      ServiceRequest.find(query)
+        .populate('userId', 'name companyName email phone address location')
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit),
+      ServiceRequest.countDocuments(query)
+    ]);
+
+    res.json({
+      requests,
+      total,
+      page,
+      pages: Math.ceil(total / limit),
+      hasMore: page * limit < total
+    });
   } catch (error) {
     console.error('Get service requests error:', error);
     res.status(500).json({ message: 'Server error', error: error.message });

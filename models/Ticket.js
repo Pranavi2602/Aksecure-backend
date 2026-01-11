@@ -69,6 +69,10 @@ const ticketSchema = new mongoose.Schema({
       type: Number,
       required: true
     }
+  },
+  viewedByAdmin: {
+    type: Boolean,
+    default: false
   }
 }, {
   timestamps: true

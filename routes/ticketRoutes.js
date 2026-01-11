@@ -5,7 +5,8 @@ import {
   getTicketById,
   updateTicket,
   addComment,
-  markReplyAsSeen
+  markReplyAsSeen,
+  markTicketsAsViewed
 } from '../controllers/ticketController.js';
 import { protect, adminOnly } from '../middleware/auth.js';
 import { upload } from '../config/cloudinary.js';
@@ -32,6 +33,9 @@ router.post('/:id/comments', addComment);
 
 // Mark admin reply as seen
 router.put('/:ticketId/replies/:timelineIndex/seen', markReplyAsSeen);
+
+// Mark tickets as viewed by admin
+router.post('/mark-viewed', adminOnly, markTicketsAsViewed);
 
 export default router;
 

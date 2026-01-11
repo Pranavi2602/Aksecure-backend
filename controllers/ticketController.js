@@ -82,19 +82,23 @@ export const getTickets = async (req, res) => {
   try {
     const userId = req.user._id;
     const role = req.user.role;
+    const { showAll = 'false' } = req.query;
 
-    let tickets;
-    if (role === 'admin') {
-      // Admin sees all tickets
-      tickets = await Ticket.find()
-        .populate('userId', 'name companyName email phone address location')
-        .sort({ createdAt: -1 });
-    } else {
-      // User sees only their tickets
-      tickets = await Ticket.find({ userId })
-        .populate('userId', 'name companyName email phone')
-        .sort({ createdAt: -1 });
+    let query = {};
+    if (role !== 'admin') {
+      // Regular users only see their own tickets
+      query.userId = userId;
+    } else if (showAll === 'false') {
+      // For admin, only show non-viewed tickets by default
+      query.$or = [
+        { viewedByAdmin: { $exists: false } },
+        { viewedByAdmin: false }
+      ];
     }
+
+    const tickets = await Ticket.find(query)
+      .populate('userId', 'name companyName email phone' + (role === 'admin' ? ' address location' : ''))
+      .sort({ createdAt: -1 });
 
     res.json(tickets);
   } catch (error) {
@@ -145,12 +149,42 @@ export const updateTicket = async (req, res) => {
     const oldStatus = ticket.status;
     const oldVisitAt = ticket.assignedVisitAt;
 
-    if (status) ticket.status = status;
-    if (assignedVisitAt) ticket.assignedVisitAt = assignedVisitAt;
+    // Prepare update object
+    const updateData = {};
+    
+    // Only update status if it's provided and different from current status
+    if (status && status !== ticket.status) {
+      updateData.status = status;
+    }
+    
+    // Only update assignedVisitAt if it's explicitly provided in the request
+    // and is different from the current value
+    if (assignedVisitAt !== undefined && assignedVisitAt !== null) {
+      // Only update if the new value is different from the current value
+      const currentAssignedAt = ticket.assignedVisitAt ? new Date(ticket.assignedVisitAt).toISOString() : null;
+      const newAssignedAt = new Date(assignedVisitAt).toISOString();
+      
+      if (currentAssignedAt !== newAssignedAt) {
+        updateData.assignedVisitAt = assignedVisitAt;
+      }
+    }
 
-    await ticket.save();
+    // If there are no changes, return the current ticket
+    if (Object.keys(updateData).length === 0) {
+      const currentTicket = await Ticket.findById(id).populate('userId', 'name companyName email phone address location');
+      return res.json(currentTicket);
+    }
 
-    const updatedTicket = await Ticket.findById(id).populate('userId', 'name companyName email phone address location');
+    // Use findOneAndUpdate with { new: true, timestamps: false } to prevent automatic timestamp updates
+    const updatedTicket = await Ticket.findOneAndUpdate(
+      { _id: id },
+      updateData,
+      { new: true, timestamps: false }
+    ).populate('userId', 'name companyName email phone address location');
+    
+    if (!updatedTicket) {
+      return res.status(404).json({ message: 'Ticket not found after update' });
+    }
 
     // Send email notification if visit time was set or status changed (in background)
     if (updatedTicket.userId && (assignedVisitAt || (status && status !== oldStatus))) {
@@ -244,6 +278,28 @@ export const addComment = async (req, res) => {
 };
 
 // Mark admin reply as seen
+// Mark tickets as viewed by admin
+export const markTicketsAsViewed = async (req, res) => {
+  try {
+    const { ticketIds } = req.body;
+    
+    if (!Array.isArray(ticketIds) || ticketIds.length === 0) {
+      return res.status(400).json({ message: 'Please provide an array of ticket IDs' });
+    }
+
+    // Update all specified tickets to mark them as viewed by admin
+    await Ticket.updateMany(
+      { _id: { $in: ticketIds } },
+      { $set: { viewedByAdmin: true } }
+    );
+
+    res.json({ message: 'Tickets marked as viewed' });
+  } catch (error) {
+    console.error('Mark tickets as viewed error:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
 export const markReplyAsSeen = async (req, res) => {
   try {
     const { ticketId, timelineIndex } = req.params;
