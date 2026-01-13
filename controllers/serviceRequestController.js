@@ -137,7 +137,14 @@ export const updateServiceRequest = async (req, res) => {
     const oldStatus = serviceRequest.status;
     const oldVisitAt = serviceRequest.assignedVisitAt;
 
-    if (status) serviceRequest.status = status;
+    if (status) {
+      if (status === 'Completed' && serviceRequest.status !== 'Completed') {
+        serviceRequest.completedAt = new Date();
+      } else if (status !== 'Completed' && serviceRequest.status === 'Completed') {
+        serviceRequest.completedAt = null;
+      }
+      serviceRequest.status = status;
+    }
     if (assignedVisitAt) serviceRequest.assignedVisitAt = assignedVisitAt;
 
     await serviceRequest.save();

@@ -169,6 +169,14 @@ export const updateTicket = async (req, res) => {
       }
     }
 
+    // Auto-set completedAt when status becomes Closed
+    if (status === 'Closed' && ticket.status !== 'Closed') {
+      updateData.completedAt = new Date();
+    } else if (status && status !== 'Closed' && ticket.status === 'Closed') {
+      // If reopening, clear the completedAt date
+      updateData.completedAt = null;
+    }
+
     // If there are no changes, return the current ticket
     if (Object.keys(updateData).length === 0) {
       const currentTicket = await Ticket.findById(id).populate('userId', 'name companyName email phone address location');
